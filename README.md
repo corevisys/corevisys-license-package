@@ -36,8 +36,13 @@ need (below).
 
 ## 2. Environment Setup
 
+The package defaults `server_url` to CoreVisys's own hosted license server,
+`https://license.corevisys.com` — you only need to set
+`COREVISYS_LICENSE_SERVER_URL` if you're running your own license server
+instead.
+
 ```env
-COREVISYS_LICENSE_SERVER_URL=https://your-corevisys-domain.com
+# COREVISYS_LICENSE_SERVER_URL=https://license.corevisys.com   # default — override only if self-hosting
 COREVISYS_PRODUCT_CODE=my-product
 COREVISYS_LICENSE_KEY=XXXX-XXXX-XXXX-XXXX
 COREVISYS_LICENSE_API_VERSION=v1
@@ -81,6 +86,47 @@ Activation collects the domain and a **fingerprint** (a one-way hash of the
 domain, server IP, product code and environment — the raw inputs never
 leave the server) and sends them to `POST /license/activate` along with the
 license key.
+
+### Built-in web activation screen (for end users)
+
+Real end users of your application will never run an `artisan` command.
+For them, the package ships a ready-made web page — a license-key input
+and an "Activate" button — enabled by default at:
+
+```
+GET  /license/activate   (shows the form + current status)
+POST /license/activate   (submits the key)
+```
+
+Nothing to wire up: as long as `corevisys-license.ui.enabled` is `true`
+(the default), the route and view are registered automatically. When
+`EnsureValidLicense` blocks an unlicensed request and no explicit
+`middleware.redirect_route` is configured, it redirects the user straight
+to this screen instead of showing a bare, unfixable 403 — so a typical
+flow is: user opens the app → gets redirected to `/license/activate` →
+pastes their key → redirected back in.
+
+Configuration (`config/corevisys-license.php`):
+
+```php
+'ui' => [
+    'enabled' => env('COREVISYS_LICENSE_UI_ENABLED', true),
+    'route_prefix' => env('COREVISYS_LICENSE_UI_PREFIX', 'license'), // -> /license/activate
+    'route_name' => 'corevisys.license.activate',
+    'middleware' => ['web'], // add 'auth' here to restrict to logged-in admins
+],
+```
+
+To restyle it, publish the view and edit the Blade file directly:
+
+```bash
+php artisan vendor:publish --tag=corevisys-license-views
+# edit resources/views/vendor/corevisys-license/activate.blade.php
+```
+
+Prefer to build your own screen instead? Set `ui.enabled` to `false` and
+call `CoreVisysLicense::activate($key)` from your own controller/route —
+see the programmatic example above.
 
 ## 4. Programmatic Verification
 
@@ -315,12 +361,14 @@ src/
         ApiRequestHandler.php      # shared HTTP transport (timeouts, retry/backoff, status handling)
     Middleware/{EnsureValidLicense,EnsureLicenseFeature}.php
     Commands/License{Install,Activate,Check,Deactivate,Status,ClearCache}Command.php
+    Http/Controllers/LicenseActivationController.php  # built-in web activation screen
     DTOs/{LicenseResponse,LicenseStatus,ActivationResult}.php
     Exceptions/  (8 typed exceptions, all extending LicenseClientException)
     Events/      (10 lifecycle events)
 config/corevisys-license.php
 database/migrations/create_corevisys_license_cache_table.php
 resources/lang/en/license.php
+resources/views/activate.blade.php  # publishable via corevisys-license-views
 tests/{Feature,Unit,Concerns}
 ```
 

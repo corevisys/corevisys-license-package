@@ -10,6 +10,7 @@ use CoreVisys\License\Commands\LicenseInstallCommand;
 use CoreVisys\License\Commands\LicenseStatusCommand;
 use CoreVisys\License\Contracts\LicenseClientInterface;
 use CoreVisys\License\Contracts\LicenseStorageInterface;
+use CoreVisys\License\Http\Controllers\LicenseActivationController;
 use CoreVisys\License\Middleware\EnsureLicenseFeature;
 use CoreVisys\License\Middleware\EnsureValidLicense;
 use CoreVisys\License\Services\ApiRequestHandler;
@@ -21,6 +22,7 @@ use CoreVisys\License\Services\LicenseStorage;
 use CoreVisys\License\Services\LicenseVerifier;
 use CoreVisys\License\Services\SignedPayloadVerifier;
 use Illuminate\Console\Scheduling\Schedule;
+use Illuminate\Support\Facades\Route;
 use Illuminate\Support\ServiceProvider;
 
 class CoreVisysServiceProvider extends ServiceProvider
@@ -120,7 +122,14 @@ class CoreVisysServiceProvider extends ServiceProvider
 
         $this->loadTranslationsFrom(__DIR__.'/../resources/lang', 'corevisys-license');
 
+        $this->loadViewsFrom(__DIR__.'/../resources/views', 'corevisys-license');
+
+        $this->publishes([
+            __DIR__.'/../resources/views' => resource_path('views/vendor/corevisys-license'),
+        ], 'corevisys-license-views');
+
         $this->registerMiddlewareAliases();
+        $this->registerActivationRoute();
 
         if ($this->app->runningInConsole()) {
             $this->commands([
@@ -145,6 +154,35 @@ class CoreVisysServiceProvider extends ServiceProvider
 
         $router->aliasMiddleware('corevisys.license', EnsureValidLicense::class);
         $router->aliasMiddleware('corevisys.feature', EnsureLicenseFeature::class);
+    }
+
+    /**
+     * Registers the built-in "activate your license" web screen, so end
+     * users (who will never run an artisan command) have somewhere to
+     * paste a license key. Controlled entirely by config('corevisys-license.ui'):
+     * set ui.enabled to false if you're building your own screen against
+     * the CoreVisysLicense facade instead. The route/view are also used
+     * as the default redirect target for EnsureValidLicense when
+     * middleware.redirect_route is left unset.
+     */
+    protected function registerActivationRoute(): void
+    {
+        if (! $this->app['config']->get('corevisys-license.ui.enabled', true)) {
+            return;
+        }
+
+        if ($this->app->routesAreCached()) {
+            return;
+        }
+
+        $prefix = trim((string) $this->app['config']->get('corevisys-license.ui.route_prefix', 'license'), '/');
+        $routeName = $this->app['config']->get('corevisys-license.ui.route_name', 'corevisys.license.activate');
+        $middleware = $this->app['config']->get('corevisys-license.ui.middleware', ['web']);
+
+        Route::group(['middleware' => $middleware], function () use ($prefix, $routeName) {
+            Route::get("/{$prefix}/activate", [LicenseActivationController::class, 'show'])->name($routeName);
+            Route::post("/{$prefix}/activate", [LicenseActivationController::class, 'store'])->name($routeName.'.store');
+        });
     }
 
     /**

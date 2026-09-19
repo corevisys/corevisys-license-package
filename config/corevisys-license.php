@@ -7,7 +7,7 @@ return [
     | CoreVisys License Server
     |--------------------------------------------------------------------------
     */
-    'server_url' => env('COREVISYS_LICENSE_SERVER_URL', 'https://corevisys.example.com'),
+    'server_url' => env('COREVISYS_LICENSE_SERVER_URL', 'https://license.corevisys.com'),
 
     'product_code' => env('COREVISYS_PRODUCT_CODE'),
 
@@ -97,6 +97,26 @@ return [
         'redirect_route' => null,
         'abort_status' => 403,
         'bypass_in_local' => env('COREVISYS_LICENSE_BYPASS_LOCAL', false),
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
+    | Built-in Activation Screen
+    |--------------------------------------------------------------------------
+    | End users installing your application will never run an `artisan`
+    | command themselves. This package can optionally register a plain
+    | web page — a license-key input and an "Activate" button — that
+    | POSTs to CoreVisysLicense::activate() for you. Turn it off if you'd
+    | rather build your own activation UI against the facade directly.
+    */
+    'ui' => [
+        'enabled' => env('COREVISYS_LICENSE_UI_ENABLED', true),
+        'route_prefix' => env('COREVISYS_LICENSE_UI_PREFIX', 'license'),
+        'route_name' => 'corevisys.license.activate',
+        // Route-group middleware for the activation page itself. Add
+        // 'auth' (or your own gate) here if only logged-in admins should
+        // be allowed to (re-)activate the license.
+        'middleware' => ['web'],
     ],
 
     /*

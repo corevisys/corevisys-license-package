@@ -27,7 +27,7 @@ class LicenseInstallCommand extends Command
         $this->newLine();
 
         $this->line(<<<'ENV'
-            COREVISYS_LICENSE_SERVER_URL=https://your-corevisys-domain.com
+            # COREVISYS_LICENSE_SERVER_URL=https://license.corevisys.com   # default — only set this if you run your own license server
             COREVISYS_PRODUCT_CODE=my-product
             COREVISYS_LICENSE_KEY=XXXX-XXXX-XXXX-XXXX
             COREVISYS_LICENSE_API_VERSION=v1

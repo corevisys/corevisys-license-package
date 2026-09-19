@@ -58,12 +58,33 @@ class EnsureValidLicense
             ], config('corevisys-license.middleware.abort_status', 403));
         }
 
-        $redirect = config('corevisys-license.middleware.redirect_route');
+        $redirect = config('corevisys-license.middleware.redirect_route')
+            ?? $this->defaultActivationRoute();
 
         if ($redirect && \Illuminate\Support\Facades\Route::has($redirect)) {
+            // Avoid an infinite redirect loop if the activation page itself
+            // is (incorrectly) placed behind this same middleware.
+            if ($request->routeIs($redirect)) {
+                abort(config('corevisys-license.middleware.abort_status', 403), 'A valid license is required to access this resource.');
+            }
+
             return redirect()->route($redirect);
         }
 
         abort(config('corevisys-license.middleware.abort_status', 403), 'A valid license is required to access this resource.');
+    }
+
+    /**
+     * When no explicit redirect_route is configured, fall back to the
+     * package's own built-in activation screen (if enabled) rather than
+     * showing a bare 403 to an end user who has no way to fix it.
+     */
+    protected function defaultActivationRoute(): ?string
+    {
+        if (! config('corevisys-license.ui.enabled', true)) {
+            return null;
+        }
+
+        return config('corevisys-license.ui.route_name');
     }
 }
