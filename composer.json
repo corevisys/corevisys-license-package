@@ -7,7 +7,7 @@
     "authors": [
         {
             "name": "CoreVisys",
-            "email": "support@corevisys.com"
+            "email": "support@corevisys.example.com"
         }
     ],
     "require": {

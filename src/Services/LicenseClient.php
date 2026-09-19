@@ -26,6 +26,7 @@ class LicenseClient implements LicenseClientInterface
         protected LicenseHeartbeat $heartbeat,
         protected FingerprintGenerator $fingerprintGenerator,
         protected LicenseStorageInterface $storage,
+        protected ApiRequestHandler $apiRequestHandler,
         protected string $productCode,
         protected ?string $configuredLicenseKey,
     ) {
@@ -116,7 +117,7 @@ class LicenseClient implements LicenseClientInterface
         }
 
         try {
-            $response = app(ApiRequestHandler::class)->post('license/deactivate', [
+            $response = $this->apiRequestHandler->post('license/deactivate', [
                 'license_key' => $key,
                 'product_code' => $this->productCode,
                 'domain' => $this->fingerprintGenerator->normalizedDomain(),
@@ -157,7 +158,7 @@ class LicenseClient implements LicenseClientInterface
     public function licenseKey(): ?string
     {
         $cached = $this->storage->get($this->productCode);
-        $decrypted = $cached ? app(LicenseStorage::class)->decryptLicenseKey($cached) : null;
+        $decrypted = $cached ? $this->storage->decryptLicenseKey($cached) : null;
 
         return $decrypted ?? $this->configuredLicenseKey;
     }

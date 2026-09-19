@@ -62,13 +62,18 @@ class LicenseActivationTest extends TestCase
             '*/api/v1/license/activate' => Http::response(['message' => 'error'], 500),
         ]);
 
-        \Illuminate\Support\Facades\Log::shouldReceive('channel->warning')
-            ->withArgs(function ($message, $context = []) {
-                $haystack = $message.json_encode($context);
+        $loggedLines = [];
 
-                return ! str_contains($haystack, 'SECRET-KEY-DO-NOT-LOG');
-            });
+        \Illuminate\Support\Facades\Log::listen(function ($event) use (&$loggedLines) {
+            $loggedLines[] = $event->message.' '.json_encode($event->context);
+        });
 
         $this->app->make(LicenseClientInterface::class)->activate('SECRET-KEY-DO-NOT-LOG');
+
+        $this->assertNotEmpty($loggedLines, 'Expected the failed activation to produce at least one log line to check.');
+
+        foreach ($loggedLines as $line) {
+            $this->assertStringNotContainsString('SECRET-KEY-DO-NOT-LOG', $line);
+        }
     }
 }

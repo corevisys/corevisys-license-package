@@ -25,4 +25,10 @@ interface LicenseStorageInterface
     public function getPublicKey(string $keyId): ?string;
 
     public function putPublicKey(string $keyId, string $publicKeyPem, int $ttlSeconds): void;
+
+    /**
+     * Decrypt the license key from a raw cache record (as returned by
+     * get()), returning null if there isn't one or it fails to decrypt.
+     */
+    public function decryptLicenseKey(?array $record): ?string;
 }

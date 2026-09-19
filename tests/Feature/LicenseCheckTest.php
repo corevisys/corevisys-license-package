@@ -246,19 +246,17 @@ class LicenseCheckTest extends TestCase
     {
         $this->seedCache();
 
-        // Rotate to a brand-new key pair for the fresh response — the
-        // client must fetch the new public key by key_id rather than
-        // reusing the one cached from the previous key.
-        $this->keyPair = null; // force a new pair for "key-2"
-
+        // The fresh response is signed with a *different* key pair under a
+        // new key_id ("key-2") — the client must fetch and use that new
+        // public key rather than reusing the one cached under "test-key-1".
         Http::fake([
-            '*/api/v1/license/public-key' => Http::response($this->publicKeyResponse('key-2')),
+            '*/api/v1/license/public-key' => Http::response($this->publicKeyResponse('key-2', useSecondaryKey: true)),
             '*/api/v1/license/check' => Http::response($this->signedEnvelope([
                 'license_id' => 'lic_123',
                 'status' => 'active',
                 'product_code' => 'test-product',
                 'checked_at' => now()->toIso8601String(),
-            ], keyId: 'key-2')),
+            ], keyId: 'key-2', useSecondaryKey: true)),
         ]);
 
         $status = $this->app->make(LicenseClientInterface::class)->check();

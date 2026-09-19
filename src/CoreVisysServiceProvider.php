@@ -96,6 +96,7 @@ class CoreVisysServiceProvider extends ServiceProvider
                 heartbeat: $app->make(LicenseHeartbeat::class),
                 fingerprintGenerator: $app->make(FingerprintGenerator::class),
                 storage: $app->make(LicenseStorageInterface::class),
+                apiRequestHandler: $app->make(ApiRequestHandler::class),
                 productCode: (string) $app['config']->get('corevisys-license.product_code'),
                 configuredLicenseKey: $app['config']->get('corevisys-license.license_key'),
             );
