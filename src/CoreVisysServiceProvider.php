@@ -30,6 +30,9 @@ class CoreVisysServiceProvider extends ServiceProvider
     public function register(): void
     {
         $this->mergeConfigFrom(__DIR__.'/../config/corevisys-license.php', 'corevisys-license');
+        SignedPayloadVerifier::validateConfiguration(
+            (string) $this->app['config']->get('corevisys-license.signature.algorithm', 'rsa')
+        );
 
         $this->app->singleton(LicenseStorageInterface::class, function ($app) {
             return new LicenseStorage($app['config']->get('corevisys-license'));
@@ -53,7 +56,7 @@ class CoreVisysServiceProvider extends ServiceProvider
             $config = $app['config']->get('corevisys-license');
 
             return new SignedPayloadVerifier(
-                config: $config['signature'] ?? [],
+                config: array_merge($config['signature'] ?? [], ['client_version' => $config['client_version'] ?? '1.0.0']),
                 storage: $app->make(LicenseStorageInterface::class),
                 serverUrl: $config['server_url'],
                 apiVersion: $config['api_version'],

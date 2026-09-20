@@ -15,6 +15,8 @@ return [
 
     'api_version' => env('COREVISYS_LICENSE_API_VERSION', 'v1'),
 
+    'client_version' => env('COREVISYS_LICENSE_CLIENT_VERSION', '1.0.0'),
+
     /*
     |--------------------------------------------------------------------------
     | HTTP Client
@@ -43,6 +45,8 @@ return [
 
     'check_interval' => env('COREVISYS_LICENSE_CHECK_INTERVAL', 86400), // seconds
 
+    // Local offline grace may shorten the server-issued offline_valid_until
+    // boundary; it can never extend that server boundary.
     'grace_period' => env('COREVISYS_LICENSE_GRACE_PERIOD', 72), // hours
 
     'allow_offline_verification' => env('COREVISYS_LICENSE_ALLOW_OFFLINE', true),
@@ -83,7 +87,7 @@ return [
     |--------------------------------------------------------------------------
     */
     'signature' => [
-        'algorithm' => env('COREVISYS_LICENSE_SIGNATURE_ALGO', 'rsa'), // rsa | ed25519
+        'algorithm' => env('COREVISYS_LICENSE_SIGNATURE_ALGO', 'rsa'), // rsa only
         'timestamp_tolerance' => env('COREVISYS_LICENSE_TIMESTAMP_TOLERANCE', 300), // seconds
         'public_key_cache_ttl' => env('COREVISYS_LICENSE_PUBLIC_KEY_TTL', 86400), // seconds
     ],

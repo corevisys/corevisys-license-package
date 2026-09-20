@@ -338,8 +338,9 @@ Every successful response is an envelope of the shape:
 
 The signature covers the **key-sorted, canonical JSON encoding of `data`
 only** — the client reconstructs that exact JSON before calling
-`openssl_verify()` (RSA) or `sodium_crypto_sign_verify_detached()`
-(Ed25519), selecting the algorithm via `signature.algorithm` in config.
+`openssl_verify()` with RSA-SHA256. Only RSA-SHA256 signing is supported.
+Ed25519 support was evaluated and removed to keep the trust boundary to a
+single, production-verified algorithm path.
 
 ---
 
@@ -356,7 +357,7 @@ src/
         LicenseVerifier.php        # POST /license/check + offline fallback
         LicenseHeartbeat.php       # POST /license/pulse
         FingerprintGenerator.php
-        SignedPayloadVerifier.php  # RSA / Ed25519 signature checks
+        SignedPayloadVerifier.php  # RSA-SHA256 signature checks
         LicenseStorage.php         # database or cache-store backend
         ApiRequestHandler.php      # shared HTTP transport (timeouts, retry/backoff, status handling)
     Middleware/{EnsureValidLicense,EnsureLicenseFeature}.php

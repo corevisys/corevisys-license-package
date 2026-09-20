@@ -65,10 +65,12 @@ trait SignsPayloads
 
         return [
             'success' => true,
+            'status' => 'success',
             'message' => 'ok',
             'data' => $data,
             'signature' => $encoded,
             'key_id' => $keyId,
+            'algorithm' => 'RSA-SHA256',
         ];
     }
 

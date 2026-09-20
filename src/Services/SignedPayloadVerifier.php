@@ -21,6 +21,22 @@ class SignedPayloadVerifier
         protected string $serverUrl,
         protected string $apiVersion,
     ) {
+        self::validateConfiguration($this->config['algorithm'] ?? 'rsa');
+    }
+
+    public static function validateConfiguration(string $algorithm): void
+    {
+        if (strtolower(trim($algorithm)) !== 'rsa') {
+            throw new \InvalidArgumentException("Unsupported CoreVisys license signature algorithm: {$algorithm}. Supported algorithm: rsa.");
+        }
+    }
+
+    public static function normalizeAlgorithm(string $algorithm): string
+    {
+        return match (strtolower(trim($algorithm))) {
+            'rsa', 'rsa-sha256' => 'rsa',
+            default => throw new \InvalidArgumentException("Unsupported server signature algorithm: {$algorithm}. Supported algorithm: RSA-SHA256."),
+        };
     }
 
     /**
@@ -36,13 +52,34 @@ class SignedPayloadVerifier
             throw new SignatureVerificationException('The server response is missing a key identifier.');
         }
 
+        self::validateConfiguration($this->config['algorithm'] ?? 'rsa');
+        $clientAlgorithm = 'rsa';
+        if ($response->algorithm !== null) {
+            try {
+                $serverAlgorithm = self::normalizeAlgorithm($response->algorithm);
+            } catch (\InvalidArgumentException) {
+                throw new SignatureVerificationException(sprintf(
+                    'algorithm mismatch: server declared %s, client configured %s',
+                    $response->algorithm,
+                    $this->config['algorithm'] ?? 'rsa'
+                ));
+            }
+
+            if ($serverAlgorithm !== $clientAlgorithm) {
+                throw new SignatureVerificationException(sprintf(
+                    'algorithm mismatch: server declared %s, client configured %s',
+                    $response->algorithm,
+                    $this->config['algorithm'] ?? 'rsa'
+                ));
+            }
+        }
+
         $publicKey = $this->resolvePublicKey($response->keyId);
 
         if (! $publicKey) {
             throw new SignatureVerificationException('Unable to resolve the public key needed to verify this response.');
         }
 
-        $algorithm = $this->config['algorithm'] ?? 'rsa';
         $canonicalJson = $response->canonicalDataJson();
         $signature = base64_decode($response->signature, true);
 
@@ -50,10 +87,7 @@ class SignedPayloadVerifier
             throw new SignatureVerificationException('The response signature is not validly encoded.');
         }
 
-        $verified = match ($algorithm) {
-            'ed25519' => $this->verifyEd25519($canonicalJson, $signature, $publicKey),
-            default => $this->verifyRsa($canonicalJson, $signature, $publicKey),
-        };
+        $verified = $this->verifyRsa($canonicalJson, $signature, $publicKey);
 
         if (! $verified) {
             throw new SignatureVerificationException('The license response signature is invalid.');
@@ -64,6 +98,7 @@ class SignedPayloadVerifier
 
     protected function verifyRsa(string $data, string $signature, string $publicKeyPem): bool
     {
+        $publicKeyPem = $this->normalizeKeyMaterial($publicKeyPem);
         $key = openssl_pkey_get_public($publicKeyPem);
 
         if ($key === false) {
@@ -75,37 +110,15 @@ class SignedPayloadVerifier
         return $result === 1;
     }
 
-    protected function verifyEd25519(string $data, string $signature, string $publicKeyPem): bool
+    protected function normalizeKeyMaterial(string $keyMaterial): string
     {
-        if (! function_exists('sodium_crypto_sign_verify_detached')) {
-            throw new SignatureVerificationException('Ed25519 verification requires the sodium extension.');
+        if (str_contains($keyMaterial, 'BEGIN ')) {
+            return $keyMaterial;
         }
 
-        // Accept either a raw 32-byte base64 key or a PEM-wrapped SPKI key.
-        $rawKey = $this->extractRawEd25519Key($publicKeyPem);
+        $decoded = base64_decode($keyMaterial, true);
 
-        try {
-            return sodium_crypto_sign_verify_detached($signature, $data, $rawKey);
-        } catch (\SodiumException) {
-            return false;
-        }
-    }
-
-    protected function extractRawEd25519Key(string $key): string
-    {
-        $trimmed = trim($key);
-
-        if (! str_contains($trimmed, 'BEGIN PUBLIC KEY')) {
-            $decoded = base64_decode($trimmed, true);
-
-            return $decoded !== false ? $decoded : $trimmed;
-        }
-
-        // Strip PEM armor; last 32 bytes of the DER-encoded SPKI blob are the raw key.
-        $lines = preg_replace('/-----[^-]+-----/', '', $trimmed);
-        $der = base64_decode(str_replace(["\r", "\n"], '', $lines), true);
-
-        return $der !== false ? substr($der, -32) : $trimmed;
+        return $decoded !== false ? $decoded : $keyMaterial;
     }
 
     protected function assertFreshTimestamp(LicenseResponse $response): void
@@ -131,34 +144,62 @@ class SignedPayloadVerifier
 
     protected function resolvePublicKey(string $keyId): ?string
     {
+        $metadata = $this->refreshKeyMetadata() ?? $this->storage->getPublicKeyMetadata();
+
+        if (! $metadata) {
+            return null;
+        }
+
+        if (in_array($keyId, $metadata['revoked_key_ids'], true)) {
+            throw new SignatureVerificationException('The signing key has been revoked.');
+        }
+
+        if (! in_array($keyId, array_column($metadata['available_keys'], 'key_id'), true)) {
+            return null;
+        }
+
         $cached = $this->storage->getPublicKey($keyId);
 
         if ($cached) {
             return $cached;
         }
 
-        $fetched = $this->fetchPublicKeyFromServer();
+        foreach ($metadata['available_keys'] as $availableKey) {
+            if ($availableKey['key_id'] === $keyId) {
+                return $availableKey['public_key'];
+            }
+        }
 
-        if (! $fetched) {
+        return null;
+    }
+
+    protected function refreshKeyMetadata(): ?array
+    {
+        $metadata = $this->fetchPublicKeyFromServer();
+
+        if ($metadata === null) {
             return null;
         }
 
-        [$fetchedKeyId, $pem] = $fetched;
-
         $ttl = $this->config['public_key_cache_ttl'] ?? 86400;
-        $this->storage->putPublicKey($fetchedKeyId, $pem, $ttl);
+        $this->storage->putPublicKeyMetadata($metadata, $ttl);
 
-        return $fetchedKeyId === $keyId ? $pem : null;
+        foreach ($metadata['available_keys'] as $availableKey) {
+            $this->storage->putPublicKey($availableKey['key_id'], $availableKey['public_key'], $ttl);
+        }
+
+        return $metadata;
     }
 
     /**
-     * @return array{0: string, 1: string}|null [key_id, pem]
+    * @return array{available_keys: array<int, array{key_id: string, public_key: string}>, revoked_key_ids: array<int, string>}
      */
     protected function fetchPublicKeyFromServer(): ?array
     {
         try {
             $response = Http::timeout(config('corevisys-license.connection_timeout', 10))
                 ->withOptions(['verify' => config('corevisys-license.verify_ssl', true)])
+                ->withHeaders(['X-API-Version' => config('corevisys-license.client_version', '1.0.0')])
                 ->get(rtrim($this->serverUrl, '/')."/api/{$this->apiVersion}/license/public-key");
 
             if (! $response->successful()) {
@@ -173,7 +214,15 @@ class SignedPayloadVerifier
                 return null;
             }
 
-            return [$keyId, $pem];
+            $availableKeys = $body['available_keys'] ?? $body['data']['available_keys'] ?? [];
+            if (! is_array($availableKeys) || $availableKeys === []) {
+                $availableKeys = [['key_id' => $keyId, 'public_key' => $pem]];
+            }
+
+            return [
+                'available_keys' => array_values(array_filter($availableKeys, fn ($key) => is_array($key) && ! empty($key['key_id']) && ! empty($key['public_key']))),
+                'revoked_key_ids' => array_values(array_filter($body['revoked_key_ids'] ?? $body['data']['revoked_key_ids'] ?? [], 'is_string')),
+            ];
         } catch (\Throwable $e) {
             if (config('corevisys-license.logging.enabled', true)) {
                 Log::channel(config('corevisys-license.logging.channel', 'stack'))

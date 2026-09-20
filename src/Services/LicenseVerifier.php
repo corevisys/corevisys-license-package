@@ -117,6 +117,9 @@ class LicenseVerifier
             'fingerprint_hash' => $fingerprint,
             'expires_at' => $status->expiresAt,
             'grace_expires_at' => $status->graceExpiresAt,
+            'issued_at' => $status->issuedAt,
+            'offline_valid_until' => $status->offlineValidUntil,
+            'is_grace_period' => $status->isGracePeriod,
             'features' => $status->features,
             'signed_payload' => $response->canonicalDataJson(),
             'signature' => $response->signature,
@@ -170,6 +173,7 @@ class LicenseVerifier
 
         $reconstructed = LicenseResponse::fromArray([
             'success' => true,
+            'status' => 'success',
             'data' => $data,
             'signature' => $cached['signature'],
             'key_id' => $cached['key_id'],
@@ -195,8 +199,12 @@ class LicenseVerifier
 
     protected function withinGracePeriod(array $cached): bool
     {
-        if (! empty($cached['grace_expires_at'])) {
-            return Carbon::parse($cached['grace_expires_at'])->isFuture();
+        if (empty($cached['offline_valid_until']) || Carbon::parse($cached['offline_valid_until'])->isPast()) {
+            return false;
+        }
+
+        if (! empty($cached['expires_at']) && Carbon::parse($cached['expires_at'])->isPast()) {
+            return false;
         }
 
         if (empty($cached['last_successful_check_at'])) {
@@ -211,7 +219,8 @@ class LicenseVerifier
     protected function statusFromCacheRecord(array $cached, bool $offline, bool $alreadyValidated): LicenseStatus
     {
         $status = new LicenseStatus(
-            valid: ($cached['status'] ?? null) === 'active',
+            valid: ($cached['status'] ?? null) === 'active'
+                && (empty($cached['expires_at']) || Carbon::parse($cached['expires_at'])->isFuture()),
             status: $cached['status'] ?? 'unknown',
             licenseId: $cached['license_id'] ?? null,
             licenseType: $cached['license_type'] ?? null,
@@ -221,6 +230,9 @@ class LicenseVerifier
             graceExpiresAt: ! empty($cached['grace_expires_at']) ? Carbon::parse($cached['grace_expires_at']) : null,
             features: is_string($cached['features'] ?? null) ? (json_decode($cached['features'], true) ?: []) : ($cached['features'] ?? []),
             checkedAt: ! empty($cached['last_checked_at']) ? Carbon::parse($cached['last_checked_at']) : now(),
+            issuedAt: ! empty($cached['issued_at']) ? Carbon::parse($cached['issued_at']) : null,
+            offlineValidUntil: ! empty($cached['offline_valid_until']) ? Carbon::parse($cached['offline_valid_until']) : null,
+            isGracePeriod: (bool) ($cached['is_grace_period'] ?? false),
             nextCheckAt: ! empty($cached['next_check_at']) ? Carbon::parse($cached['next_check_at']) : null,
             fromCache: true,
             offline: $offline,

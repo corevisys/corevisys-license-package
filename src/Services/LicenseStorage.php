@@ -67,6 +67,18 @@ class LicenseStorage implements LicenseStorageInterface
         Cache::store($this->cacheStoreName())->put($this->publicKeyCacheKey($keyId), $publicKeyPem, $ttlSeconds);
     }
 
+    public function getPublicKeyMetadata(): ?array
+    {
+        $metadata = Cache::store($this->cacheStoreName())->get($this->publicKeyMetadataCacheKey());
+
+        return is_array($metadata) ? $metadata : null;
+    }
+
+    public function putPublicKeyMetadata(array $metadata, int $ttlSeconds): void
+    {
+        Cache::store($this->cacheStoreName())->put($this->publicKeyMetadataCacheKey(), $metadata, $ttlSeconds);
+    }
+
     /**
      * Decrypt the stored license key from a raw cache record, returning
      * null if there isn't one or it fails to decrypt (e.g. APP_KEY rotated
@@ -103,6 +115,11 @@ class LicenseStorage implements LicenseStorageInterface
     protected function publicKeyCacheKey(string $keyId): string
     {
         return ($this->config['public_key_cache_key'] ?? 'corevisys.license.public_key').':'.$keyId;
+    }
+
+    protected function publicKeyMetadataCacheKey(): string
+    {
+        return ($this->config['public_key_cache_key'] ?? 'corevisys.license.public_key').':metadata';
     }
 
     protected function getFromDatabase(string $productCode): ?array
@@ -162,6 +179,8 @@ class LicenseStorage implements LicenseStorageInterface
     {
         // No natural TTL here — the license lifecycle (grace period, expiry)
         // governs validity, not the cache store's own expiration.
-        Cache::store($this->cacheStoreName())->forever($this->cacheKey($productCode), $attributes);
+        $store = Cache::store($this->cacheStoreName());
+        $existing = $store->get($this->cacheKey($productCode), []);
+        $store->forever($this->cacheKey($productCode), array_merge(is_array($existing) ? $existing : [], $attributes));
     }
 }

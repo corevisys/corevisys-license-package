@@ -19,6 +19,9 @@ return new class extends Migration
             $table->string('fingerprint_hash')->nullable()->index();
             $table->timestamp('expires_at')->nullable();
             $table->timestamp('grace_expires_at')->nullable();
+            $table->timestamp('issued_at')->nullable();
+            $table->timestamp('offline_valid_until')->nullable();
+            $table->boolean('is_grace_period')->default(false);
             $table->json('features')->nullable();
             $table->longText('signed_payload')->nullable();
             $table->text('signature')->nullable();

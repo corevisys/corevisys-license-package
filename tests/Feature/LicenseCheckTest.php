@@ -18,6 +18,12 @@ class LicenseCheckTest extends TestCase
             'license_id' => 'lic_123',
             'status' => 'active',
             'product_code' => 'test-product',
+            'license_type' => 'full',
+            'expires_at' => now()->addYear()->toIso8601String(),
+            'features' => [],
+            'issued_at' => now()->subMinute()->toIso8601String(),
+            'offline_valid_until' => now()->addDays(7)->toIso8601String(),
+            'is_grace_period' => false,
         ], $overrides);
 
         $envelope = $this->signedEnvelope($data);
@@ -25,6 +31,10 @@ class LicenseCheckTest extends TestCase
         /** @var LicenseStorageInterface $storage */
         $storage = $this->app->make(LicenseStorageInterface::class);
         $storage->putPublicKey('test-key-1', $this->keyPair()['public'], 86400);
+        $storage->putPublicKeyMetadata([
+            'available_keys' => [['key_id' => 'test-key-1', 'public_key' => $this->keyPair()['public']]],
+            'revoked_key_ids' => [],
+        ], 86400);
 
         $storage->put('test-product', [
             'license_id' => $data['license_id'],
@@ -33,6 +43,10 @@ class LicenseCheckTest extends TestCase
             'signed_payload' => json_encode($data, JSON_UNESCAPED_SLASHES),
             'signature' => $envelope['signature'],
             'key_id' => 'test-key-1',
+            'issued_at' => $data['issued_at'],
+            'offline_valid_until' => $data['offline_valid_until'],
+            'is_grace_period' => $data['is_grace_period'],
+            'expires_at' => $data['expires_at'],
             'last_successful_check_at' => $overrides['last_successful_check_at'] ?? now()->subHours(2),
             'next_check_at' => now()->subMinute(), // force due
         ]);
@@ -103,6 +117,7 @@ class LicenseCheckTest extends TestCase
         Http::fake([
             '*/api/v1/license/check' => Http::response([
                 'success' => true,
+                'status' => 'success',
                 'data' => ['status' => 'active', 'product_code' => 'test-product'],
                 // no signature / key_id
             ]),

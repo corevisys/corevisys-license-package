@@ -44,6 +44,7 @@ class ApiRequestHandler
             try {
                 $response = Http::timeout($this->config['connection_timeout'] ?? 10)
                     ->withOptions(['verify' => $this->config['verify_ssl'] ?? true])
+                    ->withHeaders(['X-API-Version' => $this->config['client_version'] ?? '1.0.0'])
                     ->acceptJson()
                     ->post($url, $body);
 
@@ -106,7 +107,11 @@ class ApiRequestHandler
             throw new LicenseClientException('The license server response could not be parsed.', 'malformed_response', $status);
         }
 
-        return LicenseResponse::fromArray($json);
+        try {
+            return LicenseResponse::fromArray($json);
+        } catch (\InvalidArgumentException $e) {
+            throw new LicenseClientException('The license server response did not match the signed response contract.', 'malformed_response', $status, false, $e);
+        }
     }
 
     protected function assertHttps(): void
